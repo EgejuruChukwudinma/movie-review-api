@@ -21,9 +21,10 @@ class Review(models.Model):
     def __str__(self):
         return f"{self.user} → {self.movie} ({self.rating})"
 
-class Like(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="likes")
-    review = models.ForeignKey(Review, on_delete=models.CASCADE, related_name="likes")
+class Reaction(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="reactions")
+    review = models.ForeignKey(Review, on_delete=models.CASCADE, related_name="reactions")
+    is_like = models.BooleanField(default=True)  # True for like, False for dislike
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -31,6 +32,7 @@ class Like(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.user} likes {self.review}"
+        action = "likes" if self.is_like else "dislikes"
+        return f"{self.user} {action} {self.review}"
 
 # Create your models here.

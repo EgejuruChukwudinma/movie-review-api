@@ -5,7 +5,7 @@ from rest_framework.test import APITestCase
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from movies.models import Movie
-from .models import Review, Like
+from .models import Review, Reaction
 
 User = get_user_model()
 
@@ -107,25 +107,27 @@ class ReviewAPITestCase(APITestCase):
         # Like the review
         response = self.client.post(url)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertTrue(response.data['liked'])
+        self.assertEqual(response.data['reaction'], 'like')
         
         # Unlike the review
         response = self.client.post(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertFalse(response.data['liked'])
+        self.assertIsNone(response.data['reaction'])
 
-    def test_review_likes_list(self):
-        """Test listing users who liked a review"""
-        # Create likes
-        Like.objects.create(user=self.user1, review=self.review)
-        Like.objects.create(user=self.user2, review=self.review)
+    def test_review_reactions_list(self):
+        """Test listing users who reacted to a review"""
+        # Create reactions
+        Reaction.objects.create(user=self.user1, review=self.review, is_like=True)
+        Reaction.objects.create(user=self.user2, review=self.review, is_like=False)
         
-        url = reverse('review-likes', kwargs={'pk': self.review.pk})
+        url = reverse('review-reactions', kwargs={'pk': self.review.pk})
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data['likes_count'], 2)
-        self.assertEqual(len(response.data['likers']), 2)
+        self.assertEqual(response.data['likes_count'], 1)
+        self.assertEqual(response.data['dislikes_count'], 1)
+        self.assertEqual(len(response.data['likers']), 1)
+        self.assertEqual(len(response.data['dislikers']), 1)
 
     def test_top_liked_reviews(self):
         """Test top-liked reviews endpoint"""
@@ -139,9 +141,9 @@ class ReviewAPITestCase(APITestCase):
         )
         
         # Add likes to reviews
-        Like.objects.create(user=self.user1, review=self.review)
-        Like.objects.create(user=self.user2, review=self.review)
-        Like.objects.create(user=self.user1, review=review2)
+        Reaction.objects.create(user=self.user1, review=self.review, is_like=True)
+        Reaction.objects.create(user=self.user2, review=self.review, is_like=True)
+        Reaction.objects.create(user=self.user1, review=review2, is_like=True)
         
         url = reverse('review-top-liked')
         response = self.client.get(url)
@@ -152,19 +154,21 @@ class ReviewAPITestCase(APITestCase):
         self.assertEqual(response.data['results'][0]['likes_count'], 2)
         self.assertEqual(response.data['results'][1]['likes_count'], 1)
 
-    def test_review_serializer_includes_likes_info(self):
-        """Test that review serializer includes likes_count and liked fields"""
+    def test_review_serializer_includes_reactions_info(self):
+        """Test that review serializer includes likes_count, dislikes_count and user_reaction fields"""
         # Add a like
-        Like.objects.create(user=self.user1, review=self.review)
+        Reaction.objects.create(user=self.user1, review=self.review, is_like=True)
         
         url = reverse('review-detail', kwargs={'pk': self.review.pk})
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('likes_count', response.data)
-        self.assertIn('liked', response.data)
+        self.assertIn('dislikes_count', response.data)
+        self.assertIn('user_reaction', response.data)
         self.assertEqual(response.data['likes_count'], 1)
-        self.assertTrue(response.data['liked'])
+        self.assertEqual(response.data['dislikes_count'], 0)
+        self.assertEqual(response.data['user_reaction'], 'like')
 
     def test_review_by_movie_endpoint(self):
         """Test the by-movie custom endpoint"""
@@ -225,6 +229,43 @@ class ReviewAPITestCase(APITestCase):
         self.client.credentials()  # Remove authentication
         
         url = reverse('review-like', kwargs={'pk': self.review.pk})
+        response = self.client.post(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_review_dislike_toggle(self):
+        """Test dislike/undislike functionality"""
+        url = reverse('review-dislike', kwargs={'pk': self.review.pk})
+        
+        # Dislike the review
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['reaction'], 'dislike')
+        
+        # Undislike the review
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.data['reaction'])
+
+    def test_like_to_dislike_conversion(self):
+        """Test converting like to dislike"""
+        # First like the review
+        like_url = reverse('review-like', kwargs={'pk': self.review.pk})
+        response = self.client.post(like_url)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['reaction'], 'like')
+        
+        # Then dislike it (should convert like to dislike)
+        dislike_url = reverse('review-dislike', kwargs={'pk': self.review.pk})
+        response = self.client.post(dislike_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['reaction'], 'dislike')
+
+    def test_dislike_requires_authentication(self):
+        """Test that disliking a review requires authentication"""
+        self.client.credentials()  # Remove authentication
+        
+        url = reverse('review-dislike', kwargs={'pk': self.review.pk})
         response = self.client.post(url)
         
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

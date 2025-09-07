@@ -100,9 +100,9 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| GET | `/api/movies/` | List all movies | No |
+| GET | `/api/movies/` | List all movies with rating summary | No |
 | POST | `/api/movies/` | Create new movie | Yes |
-| GET | `/api/movies/{id}/` | Get movie details | No |
+| GET | `/api/movies/{id}/` | Get movie details with rating summary | No |
 | PUT/PATCH | `/api/movies/{id}/` | Update movie | Yes |
 | DELETE | `/api/movies/{id}/` | Delete movie | Yes |
 
@@ -110,15 +110,19 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 - `search`: Search by title or genre
 - `genre`: Filter by genre
 - `release_year`: Filter by release year
-- `ordering`: Order by `title`, `release_year`, `created_at`
+- `ordering`: Order by `title`, `release_year`, `created_at`, `average_rating`, `review_count`
+
+**Response Fields:**
+- `average_rating`: Average rating from all reviews (null if no reviews)
+- `review_count`: Total number of reviews for the movie
 
 ### Reviews
 
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| GET | `/api/reviews/` | List all reviews | No |
+| GET | `/api/reviews/` | List all reviews with reactions | No |
 | POST | `/api/reviews/` | Create new review | Yes |
-| GET | `/api/reviews/{id}/` | Get review details | No |
+| GET | `/api/reviews/{id}/` | Get review details with reactions | No |
 | PUT/PATCH | `/api/reviews/{id}/` | Update review | Yes (Owner only) |
 | DELETE | `/api/reviews/{id}/` | Delete review | Yes (Owner only) |
 | GET | `/api/reviews/by-movie/` | Get reviews by movie title | No |
@@ -128,14 +132,20 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 - `search`: Search by movie title
 - `movie`: Filter by movie ID
 - `rating`: Filter by rating (1-5)
-- `ordering`: Order by `rating`, `created_at`, `likes_count`
+- `ordering`: Order by `rating`, `created_at`, `likes_count`, `dislikes_count`
 
-### Likes
+**Response Fields:**
+- `likes_count`: Number of likes for the review
+- `dislikes_count`: Number of dislikes for the review
+- `user_reaction`: Current user's reaction ("like", "dislike", or null)
+
+### Reactions (Likes/Dislikes)
 
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| POST | `/api/reviews/{id}/like/` | Toggle like on review | Yes |
-| GET | `/api/reviews/{id}/likes/` | List users who liked review | No |
+| POST | `/api/reviews/{id}/like/` | Like a review (toggle if already liked) | Yes |
+| POST | `/api/reviews/{id}/dislike/` | Dislike a review (toggle if already disliked) | Yes |
+| GET | `/api/reviews/{id}/reactions/` | List all reactions (likes and dislikes) | No |
 
 ## API Usage Examples
 
@@ -203,9 +213,25 @@ curl -X POST http://localhost:8000/api/reviews/1/like/ \
   -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
 ```
 
+**Dislike a review:**
+```bash
+curl -X POST http://localhost:8000/api/reviews/1/dislike/ \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+**Get all reactions for a review:**
+```bash
+curl "http://localhost:8000/api/reviews/1/reactions/"
+```
+
 **Get top-liked reviews:**
 ```bash
 curl "http://localhost:8000/api/reviews/top-liked/"
+```
+
+**Get movies ordered by average rating:**
+```bash
+curl "http://localhost:8000/api/movies/?ordering=average_rating"
 ```
 
 ## Testing
@@ -218,9 +244,10 @@ python manage.py test
 
 The test suite includes:
 - Authentication tests (registration, login, profile management)
-- Movie CRUD operations and filtering
+- Movie CRUD operations with rating summary and filtering
 - Review CRUD operations with ownership validation
-- Like functionality and top-liked reviews
+- Like/dislike functionality and reactions system
+- Movie rating summary (average rating and review count)
 - Pagination and search functionality
 - Permission and validation tests
 
@@ -235,12 +262,14 @@ The test suite includes:
 - ✅ Unique constraint (one review per user per movie)
 - ✅ Pagination (10 items per page)
 - ✅ Search and filtering capabilities
+- ✅ **Movie rating summary (average rating + review count)**
 
 ### Advanced Features
-- ✅ Like system for reviews
+- ✅ **Complete like/dislike system for reviews**
 - ✅ Top-liked reviews endpoint
-- ✅ Likes count and user-specific liked status
-- ✅ Comprehensive test coverage
+- ✅ Likes/dislikes count and user-specific reaction status
+- ✅ **Movie rating analytics and ordering**
+- ✅ Comprehensive test coverage (48 tests)
 - ✅ Environment-based configuration
 - ✅ Proper error handling and validation
 
@@ -263,9 +292,10 @@ The test suite includes:
 - `id`, `user`, `movie`, `rating`, `content`, `created_at`, `updated_at`
 - Unique constraint: (user, movie)
 
-### Likes
-- `id`, `user`, `review`, `created_at`
+### Reactions
+- `id`, `user`, `review`, `is_like`, `created_at`
 - Unique constraint: (user, review)
+- `is_like`: Boolean field (True for like, False for dislike)
 
 ## Development
 

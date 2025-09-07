@@ -204,3 +204,80 @@ class MovieAPITestCase(APITestCase):
         # Should be ordered by created_at ascending (oldest first)
         self.assertEqual(response.data['results'][0]['title'], 'First Movie')
         self.assertEqual(response.data['results'][1]['title'], 'Second Movie')
+
+    def test_movie_rating_summary(self):
+        """Test that movies include average rating and review count"""
+        from reviews.models import Review
+        from django.contrib.auth import get_user_model
+        
+        User = get_user_model()
+        user2 = User.objects.create_user(
+            username='testuser2',
+            email='test2@example.com',
+            password='testpass123'
+        )
+        
+        # Create a movie
+        movie = Movie.objects.create(**self.movie_data)
+        
+        # Create reviews with different ratings from different users
+        Review.objects.create(user=self.user, movie=movie, rating=5, content='Great!')
+        Review.objects.create(user=user2, movie=movie, rating=3, content='Average')
+        
+        url = reverse('movie-detail', kwargs={'pk': movie.pk})
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('average_rating', response.data)
+        self.assertIn('review_count', response.data)
+        self.assertEqual(response.data['average_rating'], 4.0)  # (5+3)/2
+        self.assertEqual(response.data['review_count'], 2)
+
+    def test_movie_ordering_by_average_rating(self):
+        """Test ordering movies by average rating"""
+        from reviews.models import Review
+        
+        # Create movies
+        movie1 = Movie.objects.create(title='Movie 1', genre='Action', release_year=2023)
+        movie2 = Movie.objects.create(title='Movie 2', genre='Action', release_year=2023)
+        
+        # Add reviews with different average ratings
+        Review.objects.create(user=self.user, movie=movie1, rating=5, content='Great!')
+        Review.objects.create(user=self.user, movie=movie2, rating=3, content='Average')
+        
+        url = reverse('movie-list')
+        response = self.client.get(url, {'ordering': 'average_rating'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Should be ordered by average rating ascending (lowest first)
+        self.assertEqual(response.data['results'][0]['title'], 'Movie 2')
+        self.assertEqual(response.data['results'][1]['title'], 'Movie 1')
+
+    def test_movie_ordering_by_review_count(self):
+        """Test ordering movies by review count"""
+        from reviews.models import Review
+        from django.contrib.auth import get_user_model
+        
+        User = get_user_model()
+        user2 = User.objects.create_user(
+            username='testuser2',
+            email='test2@example.com',
+            password='testpass123'
+        )
+        
+        # Create movies
+        movie1 = Movie.objects.create(title='Movie 1', genre='Action', release_year=2023)
+        movie2 = Movie.objects.create(title='Movie 2', genre='Action', release_year=2023)
+        
+        # Add different number of reviews from different users
+        Review.objects.create(user=self.user, movie=movie1, rating=5, content='Great!')
+        Review.objects.create(user=user2, movie=movie1, rating=4, content='Good!')
+        Review.objects.create(user=self.user, movie=movie2, rating=3, content='Average')
+        
+        url = reverse('movie-list')
+        response = self.client.get(url, {'ordering': 'review_count'})
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Should be ordered by review count ascending (lowest first)
+        self.assertEqual(response.data['results'][0]['title'], 'Movie 2')
+        self.assertEqual(response.data['results'][1]['title'], 'Movie 1')
