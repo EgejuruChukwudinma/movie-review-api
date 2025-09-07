@@ -21,4 +21,16 @@ class Review(models.Model):
     def __str__(self):
         return f"{self.user} → {self.movie} ({self.rating})"
 
+class Like(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="likes")
+    review = models.ForeignKey(Review, on_delete=models.CASCADE, related_name="likes")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['user', 'review']
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user} likes {self.review}"
+
 # Create your models here.
